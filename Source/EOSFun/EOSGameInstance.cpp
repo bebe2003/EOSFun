@@ -24,7 +24,7 @@ void UEOSGameInstance::Init()
 
 	sessionPtr->OnFindSessionsCompleteDelegates.AddUObject(this, &UEOSGameInstance::OnFindSessionCompleted);
 
-	sessionPtr->OnJoinSessionCompleteDelegates.AddUObject(this, &UEOSGameInstance::OnFindSessionCompleted);
+	sessionPtr->OnJoinSessionCompleteDelegates.AddUObject(this, &UEOSGameInstance::OnJoinSessionCompleted);
 
 }
 
@@ -55,14 +55,15 @@ void UEOSGameInstance::CreateSession()
 		sessionSettings.bAllowJoinInProgress = true;
 		sessionSettings.bAllowJoinViaPresence = true;
 		sessionSettings.NumPublicConnections = true;
-		sessionSettings.NumPublicConnections = 10;
+		sessionSettings.NumPublicConnections = 16;
 
 		//passing an abitray data, and make is avaliable to be read on the client.
 		FString SessionNameGenerator = KeyGenerator();
 		//sessionSettings.Set(FName("LobbyName"), FString("MyFunLobby"), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 		sessionSettings.Set(SessionNameKey, SessionNameGenerator, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+		CurrentSessionName = FName(SessionNameGenerator);
 
-		sessionPtr->CreateSession(0, "FunSession", sessionSettings);
+		sessionPtr->CreateSession(0, FName(SessionNameGenerator), sessionSettings);
 	}
 }
 
@@ -91,6 +92,16 @@ void UEOSGameInstance::CreateCompletedDelegate(FCreateCompletedDelegate createCo
 	OnCreateCompletedDelegate = createCompletedDelegate;
 }
 
+void UEOSGameInstance::FindCompletedDelegate(FFindCompletedDelegate findCompletedDelegate)
+{
+	OnFindCompletedDelegate = findCompletedDelegate;
+}
+
+void UEOSGameInstance::JoinCompletedDelegate(FJoinCompletedDelegate joinCompletedDelegate)
+{
+	OnJoinCompletedDelegate = joinCompletedDelegate;
+}
+
 void UEOSGameInstance::OnLoginCompleted(int numOfPlayers, bool bWasSuccessful, const FUniqueNetId& UserId, const FString& Error)
 {
 	if (bWasSuccessful)
@@ -105,28 +116,22 @@ void UEOSGameInstance::OnLoginCompleted(int numOfPlayers, bool bWasSuccessful, c
 	OnLoginCompletedDelegate.ExecuteIfBound(numOfPlayers, bWasSuccessful);
 }
 
-void UEOSGameInstance::OnCreateSessionCompleted(FName name, bool bWasSuccessful)
+void UEOSGameInstance::OnCreateSessionCompleted(FName SessionName, bool bWasSuccessful)
 {
 	if (bWasSuccessful)
 	{
+		CurrentSessionName = SessionName;
+		UE_LOG(LogTemp, Warning, TEXT("Session created name : %s"), *SessionName.ToString());
 		UE_LOG(LogTemp, Warning, TEXT("Session created Successfully"))
+
+		LoadLevelAndListen(LobbyLevel);
 	}
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Session createtion failed"))
 	}
 	
-	if (!LobbyLevel.IsValid())
-	{
-		LobbyLevel.LoadSynchronous();
-	}
-	if (LobbyLevel.IsValid())
-	{
-		const FName LevelName = FName(*FPackageName::ObjectPathToPackageName(LobbyLevel.ToString()));
-		GetWorld()->ServerTravel(LevelName.ToString() + "?listen");
-	}
-
-	OnCreateCompletedDelegate.ExecuteIfBound(name, bWasSuccessful);
+	OnCreateCompletedDelegate.ExecuteIfBound(SessionName, bWasSuccessful);
 }
 
 void UEOSGameInstance::OnFindSessionCompleted(bool bWasSuccessful)
@@ -138,7 +143,8 @@ void UEOSGameInstance::OnFindSessionCompleted(bool bWasSuccessful)
 		{
 			FString SessionName = GetSessionName(lobbyFound);
 			//UE_LOG(LogTemp, Warning, TEXT("Found Session with id: %s"), *lobbyFound.GetSessionIdStr());
-			UE_LOG(LogTemp, Warning, TEXT("Found Session with id: %s"), *SessionName);
+			UE_LOG(LogTemp, Warning, TEXT("Founded Session with id: %s"), *SessionName);
+			UE_LOG(LogTemp, Warning, TEXT("Founding Session with id: %s"), *FindSessionName);
 
 			if (FindSessionName == SessionName)
 			{
@@ -149,15 +155,53 @@ void UEOSGameInstance::OnFindSessionCompleted(bool bWasSuccessful)
 			KeyIndex++;
 		}
 	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Not Found with id: %s"), *FindSessionName);
+	OnFindCompletedDelegate.ExecuteIfBound(bWasSuccessful);
 }
 
-void UEOSGameInstance::OnFindSessionCompleted(FName SessionName, EOnJoinSessionCompleteResult::Type JoinResultType)
+void UEOSGameInstance::OnJoinSessionCompleted(FName SessionName, EOnJoinSessionCompleteResult::Type JoinResultType)
 {
 	if (JoinResultType == EOnJoinSessionCompleteResult::Success)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("Join Session Successully"));
 		FString TravelUrl;
-		sessionPtr->GetResolvedConnectString("", TravelUrl);
+		sessionPtr->GetResolvedConnectString(SessionName, TravelUrl);
 		GetFirstLocalPlayerController(GetWorld())->ClientTravel(TravelUrl, ETravelType::TRAVEL_Absolute);
+
+		CurrentSessionName = SessionName;
+		OnJoinCompletedDelegate.ExecuteIfBound(SessionName, "Success");
+	}
+
+	if (JoinResultType == EOnJoinSessionCompleteResult::SessionDoesNotExist)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Join Session Does Not Exist"));
+		OnJoinCompletedDelegate.ExecuteIfBound(SessionName, "SessionDoesNotExist");
+	}
+
+	if (JoinResultType == EOnJoinSessionCompleteResult::SessionIsFull)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Join Session Is Full"));
+		OnJoinCompletedDelegate.ExecuteIfBound(SessionName, "SessionIsFull");
+	}
+
+	if (JoinResultType == EOnJoinSessionCompleteResult::UnknownError)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Join Session UnknownError"));
+		OnJoinCompletedDelegate.ExecuteIfBound(SessionName, "UnknownError");
+	}
+}
+
+void UEOSGameInstance::LoadLevelAndListen(TSoftObjectPtr<UWorld> LevelToLoad)
+{
+	if (!LevelToLoad.IsValid())
+	{
+		LevelToLoad.LoadSynchronous();
+	}
+	if (LevelToLoad.IsValid())
+	{
+		const FName LevelName = FName(*FPackageName::ObjectPathToPackageName(LevelToLoad.ToString()));
+		GetWorld()->ServerTravel(LevelName.ToString() + "?listen");
 	}
 }
 
