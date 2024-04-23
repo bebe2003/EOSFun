@@ -17,7 +17,8 @@ DECLARE_DYNAMIC_DELEGATE_TwoParams(FLoginCompletedDelegate, int, numOfPlayers, b
 DECLARE_DYNAMIC_DELEGATE_TwoParams(FCreateCompletedDelegate, FName, sessionName, bool, bWasSuccessful);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FFindCompletedDelegate, bool, bWasSuccessful);
 DECLARE_DYNAMIC_DELEGATE_TwoParams(FJoinCompletedDelegate, FName, sessionName, FString, JoinResultType);
-
+DECLARE_DYNAMIC_DELEGATE_TwoParams(FDestroyCompletedDelegate, FName, sessionName, bool, bWasSuccessful);
+DECLARE_DYNAMIC_DELEGATE_TwoParams(FLogoutCompletedDelegate, int32, LocalUserNum, bool, bWasSuccessful);
 
 class IOnlineSubsystem;
 
@@ -35,6 +36,8 @@ private: // Functions
 	void OnFindSessionCompleted(bool bWasSuccessful);
 	void OnJoinSessionCompleted(FName SessionName, EOnJoinSessionCompleteResult::Type JoinResultType);
 	void LoadLevelAndListen(TSoftObjectPtr<UWorld> LevelToLoad);
+	void OnDestroySessionCompleted(FName SessionName, bool bWasSuccessful);
+	void OnLogoutCompleted(int32 LocalUserNum, bool bWasSuccessful);
 
 	FString KeyGenerator();
 
@@ -54,15 +57,20 @@ private: // Variables
 
 public: // Functions 
 
-	UFUNCTION(BlueprintCallable)
-	void Login();
+	UFUNCTION(BlueprintCallable, Category = "EOS Functions")
+	void LoginWithEOS(FString ID, FString Token, FString LoginType);
 
-	UFUNCTION(BlueprintCallable)
-	void CreateSession();
+	UFUNCTION(BlueprintCallable, Category = "EOS Functions")
+	void CreateEOSSession(bool bIsDedicatedServer, int32 NumberOfPublicConnections);
 
-	UFUNCTION(BlueprintCallable)
-	void FindSession(FString CodeFindSession);
+	UFUNCTION(BlueprintCallable, Category = "EOS Functions")
+	void FindEOSSession(FString CodeFindSession);
 
+	UFUNCTION(BlueprintCallable, Category = "EOS Functions")
+	void DestroyEOSSession();
+
+	UFUNCTION(BlueprintCallable, Category = "EOS Functions")
+	void LogoutEOS();
 	/*
 	* DELEGATE
 	*/
@@ -78,24 +86,30 @@ public: // Functions
 	UFUNCTION(BlueprintCallable)
 	void JoinCompletedDelegate(FJoinCompletedDelegate joinCompletedDelegate);
 
+	UFUNCTION(BlueprintCallable)
+	void DestroyCompletedDelegate(FDestroyCompletedDelegate destroyCompletedDelegate);
+
+	UFUNCTION(BlueprintCallable)
+	void LogoutCompletedDelegate(FLogoutCompletedDelegate logoutCompletedDelegate);
+
 public: // Variables
 	/*
 	* MAP
 	*/
-	UPROPERTY(EditDefaultsOnly, Category = "Write")
+	UPROPERTY(EditDefaultsOnly, Category = "EOS Variables")
 	TSoftObjectPtr<UWorld> LobbyLevel;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Write")
+	UPROPERTY(EditDefaultsOnly, Category = "EOS Variables")
 	TSoftObjectPtr<UWorld> JudgeVoteLevel;
 
 	/*
 	* References
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Refs")
-	APlayerController* Ref_PCMainMenu = nullptr;
+	APlayerController* Ref_PCMainMenu;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Refs")
-	APlayerController* Ref_PCLobby = nullptr;
+	APlayerController* Ref_PCLobby;
 
 	/*
 	* DELEGATE
@@ -112,10 +126,22 @@ public: // Variables
 	UPROPERTY()
 	FJoinCompletedDelegate OnJoinCompletedDelegate;
 
+	UPROPERTY()
+	FDestroyCompletedDelegate OnDestroyCompletedDelegate;
+
+	UPROPERTY()
+	FLogoutCompletedDelegate OnLogoutCompletedDelegate;
+
 public: //Get Set
 	FORCEINLINE FName GetSessionNameKey() const { return SessionNameKey; }
 	FORCEINLINE FString GetSessionName(const FOnlineSessionSearchResult& searchResult) const;
 
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS Functions")
 	FORCEINLINE FName GetCurrentSessionName() const { return CurrentSessionName; }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS Functions")
+	FORCEINLINE FString GetPlayerUsername();
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS Functions")
+	FORCEINLINE bool IsPlayerLoggedIn();
 };

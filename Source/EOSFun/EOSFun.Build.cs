@@ -9,6 +9,6 @@ public class EOSFun : ModuleRules
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput",
-		"OnlineSubsystem", "OnlineSubsystemEOS"});
+		"OnlineSubsystem", "OnlineSubsystemEOS", "OnlineSubsystemUtils" });
 	}
 }

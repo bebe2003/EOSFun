@@ -1,7 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-#include "Math/RandomStream.h"
 #include "EOSGameInstance.h"
+#include "Math/RandomStream.h"
 #include "OnlineSubsystem.h"
 #include "Interfaces/OnlineIdentityInterface.h"
 #include "Kismet/GameplayStatics.h"
@@ -14,10 +14,13 @@ void UEOSGameInstance::Init()
 {
 	Super::Init();
 
+	// Tro toi he thong online cua Unreal Engine 
 	onlineSubsystem = IOnlineSubsystem::Get();
 
+	// Tro toi giao dien dinh danh online 
 	identityPtr = onlineSubsystem->GetIdentityInterface();
 	identityPtr->OnLoginCompleteDelegates->AddUObject(this, &UEOSGameInstance::OnLoginCompleted);
+	identityPtr->OnLogoutCompleteDelegates->AddUObject(this, &UEOSGameInstance::OnLogoutCompleted);
 
 	sessionPtr = onlineSubsystem->GetSessionInterface();
 	sessionPtr->OnCreateSessionCompleteDelegates.AddUObject(this, &UEOSGameInstance::OnCreateSessionCompleted);
@@ -26,28 +29,76 @@ void UEOSGameInstance::Init()
 
 	sessionPtr->OnJoinSessionCompleteDelegates.AddUObject(this, &UEOSGameInstance::OnJoinSessionCompleted);
 
+	sessionPtr->OnDestroySessionCompleteDelegates.AddUObject(this, &UEOSGameInstance::OnDestroySessionCompleted);
+	
 }
 
-void UEOSGameInstance::Login()
+void UEOSGameInstance::LoginWithEOS(FString ID, FString Token, FString LoginType)
 {
 	if (identityPtr)
 	{
 		FOnlineAccountCredentials onlineAccountCredentials;
-		onlineAccountCredentials.Type = "AccountPortal";
-		onlineAccountCredentials.Id = "";
-		onlineAccountCredentials.Token = "";
+		onlineAccountCredentials.Type = LoginType;
+		onlineAccountCredentials.Id = ID;
+		onlineAccountCredentials.Token = Token;
 
 		identityPtr->Login(0, onlineAccountCredentials);
 	}
 }
 
-void UEOSGameInstance::CreateSession()
+
+void UEOSGameInstance::LogoutEOS()
+{
+	if (identityPtr)
+	{
+		identityPtr->Logout(0);
+	}
+}
+
+
+FString UEOSGameInstance::GetPlayerUsername()
+{
+	if (identityPtr)
+	{
+		// Lay thong tin nguoi choi hien tai
+		// Lay ID cua nguoi choi dau tien (thuong la local player) 
+
+		if (identityPtr->GetLoginStatus(0) == ELoginStatus::LoggedIn)
+		{	
+			// Lay thong tin chi tiet ve nguoi choi tu ID 
+			// auto PlayerId = identityPtr->GetUniquePlayerId(0);
+
+			FString PlayerName;
+			PlayerName = identityPtr->GetPlayerNickname(0);
+
+            // In ra ten cua nguoi choi 
+            UE_LOG(LogTemp, Warning, TEXT("Player name: %s"), *PlayerName);
+			return PlayerName;
+		}
+	}
+
+	return FString();
+}
+
+bool UEOSGameInstance::IsPlayerLoggedIn()
+{
+	if (identityPtr)
+	{
+		if (identityPtr->GetLoginStatus(0) == ELoginStatus::LoggedIn)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void UEOSGameInstance::CreateEOSSession(bool bIsDedicatedServer, int32 NumberOfPublicConnections)
 {
 	if (sessionPtr)
 	{
 		FOnlineSessionSettings sessionSettings;
 		sessionSettings.bAllowInvites = true;
-		sessionSettings.bIsDedicated = false;
+		sessionSettings.bIsDedicated = bIsDedicatedServer;
 		sessionSettings.bIsLANMatch = false;
 		sessionSettings.bShouldAdvertise = true;
 		sessionSettings.bUseLobbiesIfAvailable = true;
@@ -55,7 +106,7 @@ void UEOSGameInstance::CreateSession()
 		sessionSettings.bAllowJoinInProgress = true;
 		sessionSettings.bAllowJoinViaPresence = true;
 		sessionSettings.NumPublicConnections = true;
-		sessionSettings.NumPublicConnections = 16;
+		sessionSettings.NumPublicConnections = NumberOfPublicConnections;
 
 		//passing an abitray data, and make is avaliable to be read on the client.
 		FString SessionNameGenerator = KeyGenerator();
@@ -67,7 +118,7 @@ void UEOSGameInstance::CreateSession()
 	}
 }
 
-void UEOSGameInstance::FindSession(FString CodeFindSession)
+void UEOSGameInstance::FindEOSSession(FString CodeFindSession)
 {
 	if (sessionPtr)
 	{
@@ -79,6 +130,14 @@ void UEOSGameInstance::FindSession(FString CodeFindSession)
 		
 		FindSessionName = CodeFindSession;
 		sessionPtr->FindSessions(0, sessionSearch.ToSharedRef());
+	}
+}
+
+void UEOSGameInstance::DestroyEOSSession()
+{
+	if (sessionPtr)
+	{
+		sessionPtr->DestroySession(CurrentSessionName);
 	}
 }
 
@@ -100,6 +159,16 @@ void UEOSGameInstance::FindCompletedDelegate(FFindCompletedDelegate findComplete
 void UEOSGameInstance::JoinCompletedDelegate(FJoinCompletedDelegate joinCompletedDelegate)
 {
 	OnJoinCompletedDelegate = joinCompletedDelegate;
+}
+
+void UEOSGameInstance::DestroyCompletedDelegate(FDestroyCompletedDelegate destroyCompletedDelegate)
+{
+	OnDestroyCompletedDelegate = destroyCompletedDelegate;
+}
+
+void UEOSGameInstance::LogoutCompletedDelegate(FLogoutCompletedDelegate logoutCompletedDelegate)
+{
+	OnLogoutCompletedDelegate = logoutCompletedDelegate;
 }
 
 void UEOSGameInstance::OnLoginCompleted(int numOfPlayers, bool bWasSuccessful, const FUniqueNetId& UserId, const FString& Error)
@@ -167,8 +236,11 @@ void UEOSGameInstance::OnJoinSessionCompleted(FName SessionName, EOnJoinSessionC
 		UE_LOG(LogTemp, Warning, TEXT("Join Session Successully"));
 		FString TravelUrl;
 		sessionPtr->GetResolvedConnectString(SessionName, TravelUrl);
-		GetFirstLocalPlayerController(GetWorld())->ClientTravel(TravelUrl, ETravelType::TRAVEL_Absolute);
-
+		UE_LOG(LogTemp, Warning, TEXT("Join Session is : %s"), *TravelUrl);
+		if (!TravelUrl.IsEmpty())
+		{
+			GetFirstLocalPlayerController(GetWorld())->ClientTravel(TravelUrl, ETravelType::TRAVEL_Absolute);
+		}
 		CurrentSessionName = SessionName;
 		OnJoinCompletedDelegate.ExecuteIfBound(SessionName, "Success");
 	}
@@ -192,6 +264,35 @@ void UEOSGameInstance::OnJoinSessionCompleted(FName SessionName, EOnJoinSessionC
 	}
 }
 
+void UEOSGameInstance::OnDestroySessionCompleted(FName SessionName, bool bWasSuccessful)
+{
+	if (bWasSuccessful)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Destroy Session Sussess is %s"), *SessionName.ToString());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Destroy Session Failed is %s "), *SessionName.ToString());
+	}
+
+	OnDestroyCompletedDelegate.ExecuteIfBound(SessionName, bWasSuccessful);
+}
+
+void UEOSGameInstance::OnLogoutCompleted(int32 LocalUserNum, bool bWasSuccessful)
+{
+
+	if (bWasSuccessful)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Logout Successed"));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Logout failed"));
+	}
+
+	OnLogoutCompletedDelegate.ExecuteIfBound(LocalUserNum, bWasSuccessful);
+}
+
 void UEOSGameInstance::LoadLevelAndListen(TSoftObjectPtr<UWorld> LevelToLoad)
 {
 	if (!LevelToLoad.IsValid())
@@ -204,6 +305,8 @@ void UEOSGameInstance::LoadLevelAndListen(TSoftObjectPtr<UWorld> LevelToLoad)
 		GetWorld()->ServerTravel(LevelName.ToString() + "?listen");
 	}
 }
+
+
 
 FString UEOSGameInstance::KeyGenerator()
 {

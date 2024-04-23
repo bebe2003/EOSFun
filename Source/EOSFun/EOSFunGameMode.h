@@ -11,8 +11,11 @@ class AEOSFunGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
 
+	//AEOSFunGameMode();
+
 public:
-	AEOSFunGameMode();
+	virtual void PostLogin(APlayerController* NewPlayer) override;
+
 };
 
 
