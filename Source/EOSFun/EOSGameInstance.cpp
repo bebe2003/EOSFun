@@ -3,6 +3,7 @@
 #include "EOSGameInstance.h"
 #include "Math/RandomStream.h"
 #include "OnlineSubsystem.h"
+#include "OnlineSubsystemUtils.h"
 #include "Interfaces/OnlineIdentityInterface.h"
 #include "Kismet/GameplayStatics.h"
 #include "Online/OnlineSessionNames.h"
@@ -15,7 +16,8 @@ void UEOSGameInstance::Init()
 	Super::Init();
 
 	// Tro toi he thong online cua Unreal Engine 
-	onlineSubsystem = IOnlineSubsystem::Get();
+	//onlineSubsystem = IOnlineSubsystem::Get();
+	onlineSubsystem = Online::GetSubsystem(this->GetWorld());
 
 	// Tro toi giao dien dinh danh online 
 	identityPtr = onlineSubsystem->GetIdentityInterface();
@@ -43,6 +45,7 @@ void UEOSGameInstance::LoginWithEOS(FString ID, FString Token, FString LoginType
 		onlineAccountCredentials.Token = Token;
 
 		identityPtr->Login(0, onlineAccountCredentials);
+		//identityPtr->AutoLogin(0);
 	}
 }
 
@@ -66,13 +69,14 @@ FString UEOSGameInstance::GetPlayerUsername()
 		if (identityPtr->GetLoginStatus(0) == ELoginStatus::LoggedIn)
 		{	
 			// Lay thong tin chi tiet ve nguoi choi tu ID 
-			// auto PlayerId = identityPtr->GetUniquePlayerId(0);
+			auto PlayerId = identityPtr->GetUniquePlayerId(0);
 
 			FString PlayerName;
 			PlayerName = identityPtr->GetPlayerNickname(0);
 
             // In ra ten cua nguoi choi 
             UE_LOG(LogTemp, Warning, TEXT("Player name: %s"), *PlayerName);
+			//UE_LOG(LogTemp, Warning, TEXT("Player ID: %s"), *PlayerId);
 			return PlayerName;
 		}
 	}
@@ -101,17 +105,16 @@ void UEOSGameInstance::CreateEOSSession(bool bIsDedicatedServer, int32 NumberOfP
 		sessionSettings.bIsDedicated = bIsDedicatedServer;
 		sessionSettings.bIsLANMatch = false;
 		sessionSettings.bShouldAdvertise = true;
-		sessionSettings.bUseLobbiesIfAvailable = true;
+		sessionSettings.bUseLobbiesIfAvailable = false; 
 		sessionSettings.bUsesPresence = true;
 		sessionSettings.bAllowJoinInProgress = true;
 		sessionSettings.bAllowJoinViaPresence = true;
-		sessionSettings.NumPublicConnections = true;
 		sessionSettings.NumPublicConnections = NumberOfPublicConnections;
 
 		//passing an abitray data, and make is avaliable to be read on the client.
 		FString SessionNameGenerator = KeyGenerator();
 		//sessionSettings.Set(FName("LobbyName"), FString("MyFunLobby"), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
-		sessionSettings.Set(SessionNameKey, SessionNameGenerator, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+		sessionSettings.Set(SessionNameKey, SessionNameGenerator, EOnlineDataAdvertisementType::ViaOnlineService);
 		CurrentSessionName = FName(SessionNameGenerator);
 
 		sessionPtr->CreateSession(0, FName(SessionNameGenerator), sessionSettings);
@@ -126,8 +129,8 @@ void UEOSGameInstance::FindEOSSession(FString CodeFindSession)
 
 		sessionSearch->bIsLanQuery = false;
 		sessionSearch->MaxSearchResults = 100;
-		sessionSearch->QuerySettings.Set(SEARCH_LOBBIES, true, EOnlineComparisonOp::Equals); //SEARCH_KEYWORDS
-		
+		//sessionSearch->QuerySettings.Set(SEARCH_LOBBIES, true, EOnlineComparisonOp::Equals); 
+		sessionSearch->QuerySettings.SearchParams.Empty();
 		FindSessionName = CodeFindSession;
 		sessionPtr->FindSessions(0, sessionSearch.ToSharedRef());
 	}
@@ -190,6 +193,7 @@ void UEOSGameInstance::OnCreateSessionCompleted(FName SessionName, bool bWasSucc
 	if (bWasSuccessful)
 	{
 		CurrentSessionName = SessionName;
+		bIsHosting = true;
 		UE_LOG(LogTemp, Warning, TEXT("Session created name : %s"), *SessionName.ToString());
 		UE_LOG(LogTemp, Warning, TEXT("Session created Successfully"))
 
@@ -242,6 +246,7 @@ void UEOSGameInstance::OnJoinSessionCompleted(FName SessionName, EOnJoinSessionC
 			GetFirstLocalPlayerController(GetWorld())->ClientTravel(TravelUrl, ETravelType::TRAVEL_Absolute);
 		}
 		CurrentSessionName = SessionName;
+		bIsHosting = false;
 		OnJoinCompletedDelegate.ExecuteIfBound(SessionName, "Success");
 	}
 
@@ -326,4 +331,9 @@ FString UEOSGameInstance::GetSessionName(const FOnlineSessionSearchResult& searc
 	FString outVal = { "None" };
 	searchResult.Session.SessionSettings.Get(SessionNameKey, outVal);
 	return outVal;
+}
+
+bool UEOSGameInstance::IsPlayerHosting()
+{
+	return bIsHosting;
 }

@@ -55,6 +55,8 @@ private: // Variables
 
 	FName CurrentSessionName;
 
+	bool bIsHosting;
+
 public: // Functions 
 
 	UFUNCTION(BlueprintCallable, Category = "EOS Functions")
@@ -144,4 +146,7 @@ public: //Get Set
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS Functions")
 	FORCEINLINE bool IsPlayerLoggedIn();
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS Functions")
+	FORCEINLINE bool IsPlayerHosting();
 };

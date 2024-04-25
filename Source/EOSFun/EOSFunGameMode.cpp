@@ -4,6 +4,7 @@
 #include "EOSFunCharacter.h"
 #include "EOSGameInstance.h"
 #include "OnlineSubsystem.h"
+#include "OnlineSubsystemUtils.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -19,18 +20,19 @@
 
 void AEOSFunGameMode::PostLogin(APlayerController* NewPlayer)
 {
-	Super::PostLogin(NewPlayer);
 
 	UEOSGameInstance* EOSGameInstance = GetGameInstance<UEOSGameInstance>();
 
-	if (NewPlayer)
+	check(IsValid(EOSGameInstance));
+
+	if (IsValid(NewPlayer))
 	{
 		FUniqueNetIdRepl UniqueNetIDRepl;
 		if (NewPlayer->IsLocalController())
 		{
 			ULocalPlayer* LocalPlayerRef = NewPlayer->GetLocalPlayer();
 
-			if (LocalPlayerRef)
+			if (IsValid(LocalPlayerRef))
 			{
 				UniqueNetIDRepl = LocalPlayerRef->GetPreferredUniqueNetId();
 			}
@@ -49,9 +51,11 @@ void AEOSFunGameMode::PostLogin(APlayerController* NewPlayer)
 		}
 		
 		TSharedPtr<const FUniqueNetId> UniqueNetId = UniqueNetIDRepl.GetUniqueNetId();
+
 		if (UniqueNetId != nullptr)
 		{
-			IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get();
+			//IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get();
+			IOnlineSubsystem* onlineSubsystem = Online::GetSubsystem(NewPlayer->GetWorld());
 			IOnlineSessionPtr sessionPtr = onlineSubsystem->GetSessionInterface();
 			bool bRegistrationSuccess = sessionPtr->RegisterPlayer(EOSGameInstance->GetCurrentSessionName(), *UniqueNetId, false);
 			if (bRegistrationSuccess)
@@ -63,6 +67,67 @@ void AEOSFunGameMode::PostLogin(APlayerController* NewPlayer)
 				UE_LOG(LogTemp, Warning, TEXT("Registration Failed"));
 			}
 		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Registration UniqueNetId New Player not founded"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Registration New Player not founded"));
 	}
 
+	Super::PostLogin(NewPlayer);
+
+}
+
+void AEOSFunGameMode::PreLogout(APlayerController* InPlayerController)
+{
+	UEOSGameInstance* EOSGameInstance = GetGameInstance<UEOSGameInstance>();
+
+	check(IsValid(EOSGameInstance));
+
+	check(IsValid(InPlayerController));
+
+	// This code handles logins for both the local player (listen server) and remote players (net connection).
+	FUniqueNetIdRepl UniqueNetIdRepl;
+	if (InPlayerController->IsLocalPlayerController())
+	{
+		ULocalPlayer* LocalPlayer = InPlayerController->GetLocalPlayer();
+		if (IsValid(LocalPlayer))
+		{
+			UniqueNetIdRepl = LocalPlayer->GetPreferredUniqueNetId();
+		}
+		else
+		{
+			UNetConnection* RemoteNetConnection = Cast<UNetConnection>(InPlayerController->Player);
+			check(IsValid(RemoteNetConnection));
+			UniqueNetIdRepl = RemoteNetConnection->PlayerId;
+		}
+	}
+	else
+	{
+		UNetConnection* RemoteNetConnection = Cast<UNetConnection>(InPlayerController->Player);
+		check(IsValid(RemoteNetConnection));
+		UniqueNetIdRepl = RemoteNetConnection->PlayerId;
+	}
+
+	// Get the unique player ID.
+	TSharedPtr<const FUniqueNetId> UniqueNetId = UniqueNetIdRepl.GetUniqueNetId();
+	check(UniqueNetId != nullptr);
+
+	// Get the online session interface.
+	IOnlineSubsystem* Subsystem = Online::GetSubsystem(InPlayerController->GetWorld());
+	IOnlineSessionPtr Session = Subsystem->GetSessionInterface();
+
+	// Unregister the player with the "MyLocalSessionName" session; this name should match the name you provided in CreateSession.
+	if (Session->UnregisterPlayer(EOSGameInstance->GetCurrentSessionName(), *UniqueNetId))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UnregisterPlayer Sucessful"));
+	}
+	else
+	{
+		// The player could not be unregistered.
+		UE_LOG(LogTemp, Warning, TEXT("UnregisterPlayer Failed"));
+	}
 }

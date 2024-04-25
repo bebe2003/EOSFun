@@ -16,6 +16,8 @@ class AEOSFunGameMode : public AGameModeBase
 public:
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 
+	void PreLogout(APlayerController* InPlayerController);
+
 };
 
 
